@@ -1,17 +1,29 @@
 import random
 import sqlite3
-
+# The reason why it test #4 doesnt pass is because i store the bin and caccount number separated, not as a whole, and the thest check the number as a whole.
 # Connect to database and create a cursor instance.
-conn = sqlite3.connect("card.s3db")
+
+conn = sqlite3.connect("../card.s3db")
 cursor = conn.cursor()
 
-cursor.execute("""CREATE TABLE IF NOT EXISTS card (
-        id INTEGER ,
-        number TEXT,
-        pin TEXT,
-        balance INTEGER DEFAULT 0
-         )""")
-conn.commit()
+
+def create_table():
+    cursor.execute("""CREATE TABLE IF NOT EXISTS card (
+            id INTEGER,
+            number TEXT,
+            pin TEXT,
+            balance INTEGER DEFAULT 0
+             )""")
+    conn.commit()
+
+
+def drop_table():
+    cursor.execute("""DROP TABLE card""")
+    conn.commit()
+
+
+drop_table()
+create_table()
 
 
 def remove_symbols_from_string(stringToEdit) -> str:
@@ -68,7 +80,6 @@ def gen_check_digit(bank_idNumber, account_number) -> str:
 
 
 class CardNumber:
-
     def __init__(self, _bin, _acc_number, _pin_code):
         self.bin = _bin
         self.acc_number = _acc_number
@@ -97,9 +108,9 @@ while choice != 0:
         card = (iin_bin, acc_number + check_sum, card_pin, 0)
         cursor.execute("INSERT INTO card (id, number, pin, balance) VALUES (?, ?, ?, ?)", card)
         conn.commit()
-        # print("New card added to the card\'s database.")
-        # print("BIN: " + card[0] + " Acc_#: " + card[1] + "\n"
-        #       "PIN: " + card[2] + "   Balance: " + str(card[3]) + " $" + "\n")
+        print("New card added to the card\'s database.")
+        print("BIN: " + card[0] + " Acc_#: " + card[1] + "\n"
+              "PIN: " + card[2] + "   Balance: " + str(card[3]) + " $" + "\n")
         continue
     elif choice == "2":
         # Log into acc
@@ -149,35 +160,32 @@ while choice != 0:
                         current_balance = int(remove_symbols_from_string(fetch))
                         print("\nTransfer")
                         card_num_to_transfer = input("Enter card number:\n")
-                        check_sum = gen_check_digit(iin_bin, card_num_to_transfer[6:])
                         if card_num_to_transfer[6:] == user_number:
                             print("\nYou can't transfer money to the same account!\n")
                             break
-                        if check_sum == card_num_to_transfer[-1]:
+                        if card_num_to_transfer[-1] == gen_check_digit(card_num_to_transfer[:5], card_num_to_transfer[6:]):
                             # Means it pass Luhn's algorithm.
-                            pass
+                            cursor.execute("SELECT number FROM card WHERE number == ?", (card_num_to_transfer[6:],))
+                            nums = cursor.fetchall()
+                            if (card_num_to_transfer[6:],) in nums:
+                                amount = int(input("Enter how much money you want to transfer:\n"))
+                                if amount <= current_balance:
+                                    # do transfer and print success.
+                                    sender = (amount, user_number)
+                                    receiver = (amount, card_num_to_transfer[6:])
+                                    cursor.execute("UPDATE card SET balance=(balance - ?) WHERE number == ? ", sender)
+                                    cursor.execute("UPDATE card SET balance=(balance + ?) WHERE number == ? ", receiver)
+                                    conn.commit()
+                                    print("Success!")
+                                else:
+                                    print("Not enough money!")
+                                    continue
+                            else:
+                                print("Such a card does not exist.")
+                                continue
                         else:
                             print("\nProbably you made mistake in the card number. Please try again!\n")
                             break
-                        cursor.execute("SELECT number FROM card WHERE number == ?", (card_num_to_transfer[6:],))
-                        nums = cursor.fetchall()
-                        if (card_num_to_transfer[6:],) in nums:
-                            amount = int(input("Enter how much money you want to transfer:\n"))
-                            if amount <= current_balance:
-                                # do transfer and print success.
-                                sender = (amount, user_number)
-                                receiver = (amount, card_num_to_transfer[6:])
-                                cursor.execute("UPDATE card SET balance=(balance - ?) WHERE number == ? ", sender)
-                                cursor.execute("UPDATE card SET balance=(balance + ?) WHERE number == ? ", receiver)
-                                conn.commit()
-                                print("Success!")
-                            else:
-                                print("Not enough money!")
-                                continue
-                        else:
-                            print("Such a card does not exist.")
-                            continue
-                        pass
                     elif menu == "4":
                         # Close account
                         cursor.execute("DELETE FROM card WHERE number == ?", (user_number,))
@@ -215,5 +223,4 @@ while choice != 0:
         exit()
     else:
         print("Incorrect parameter.")
-        conn.close()
-        exit()
+        continue
