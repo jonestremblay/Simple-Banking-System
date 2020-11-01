@@ -1,29 +1,44 @@
 import random
 import sqlite3
-# The reason why it test #4 doesnt pass is because i store the bin and caccount number separated, not as a whole, and the thest check the number as a whole.
+
+# The reason why the test #4 doesnt pass is because i store the bin and account number separated, not as a whole, and the thest check the number as a whole.
 # Connect to database and create a cursor instance.
 
 conn = sqlite3.connect("../card.s3db")
 cursor = conn.cursor()
 
+ADD_CARD = "INSERT INTO card (id, number, pin, balance) VALUES (?, ?, ?, ?)"
 
-def create_table():
+DELETE_CARD = "DELETE FROM card WHERE number == ?"
+
+GET_ALL_CARDS = "SELECT * FROM card"
+
+GET_CARD_NUMBER_ofACCOUNT = "SELECT number FROM card WHERE number == ? "
+
+GET_PIN_NUMBER_ofACCOUNT = "SELECT pin FROM card WHERE number == ? "
+
+GET_BALANCE_ofACCOUNT = "SELECT balance FROM card WHERE number == ?"
+
+UPDATE_BALANCE_ofAccount = "UPDATE card SET balance=(balance - ?) WHERE number == ? "
+
+
+def create_card_table():
     cursor.execute("""CREATE TABLE IF NOT EXISTS card (
             id INTEGER,
             number TEXT,
             pin TEXT,
             balance INTEGER DEFAULT 0
-             )""")
+            )""")
     conn.commit()
 
 
-def drop_table():
+def drop_card_table():
     cursor.execute("""DROP TABLE card""")
     conn.commit()
 
 
-drop_table()
-create_table()
+drop_card_table()
+create_card_table()
 
 
 def remove_symbols_from_string(stringToEdit) -> str:
@@ -70,12 +85,10 @@ def gen_check_digit(bank_idNumber, account_number) -> str:
         if k > 9:
             c += 9
     int_sum = sum(new_list) - c
-    # poss_check_digits = []
+
     for x in range(10):
         if (int_sum + x) % 10 == 0:
-            # poss_check_digits.append(x)
             check_digit = str(x)
-    # check_digit = str(random.choice(poss_check_digits))
     return check_digit
 
 
@@ -91,6 +104,7 @@ class CardNumber:
 iin_bin = "400000"
 choice = -1
 while choice != 0:
+    log_in = False
     choice = input("1. Create an account\n"
                    "2. Log into account\n"
                    "3. View all accounts\n"
@@ -102,26 +116,23 @@ while choice != 0:
         card_pin = gen_pin_code()
         print("\nYour card has been created\n"
               "Your card number:\n" +
-              card_number + "\n"
-                            "Your card PIN:\n" +
+              card_number + "\nYour card PIN:\n" +
               card_pin + "\n")
         card = (iin_bin, acc_number + check_sum, card_pin, 0)
-        cursor.execute("INSERT INTO card (id, number, pin, balance) VALUES (?, ?, ?, ?)", card)
+        cursor.execute(ADD_CARD, card)
         conn.commit()
         print("New card added to the card\'s database.")
         print("BIN: " + card[0] + " Acc_#: " + card[1] + "\n"
               "PIN: " + card[2] + "   Balance: " + str(card[3]) + " $" + "\n")
-        continue
     elif choice == "2":
         # Log into acc
-        log_in = False
         user = input("Enter you card number:\n")
         pin = input("Enter your PIN:\n")
         user_number = user[6:]
-        cursor.execute("SELECT number FROM card WHERE number == ? ", (user_number,))
+        cursor.execute(GET_CARD_NUMBER_ofACCOUNT, (user_number,))
         user_fetch = cursor.fetchall()
         user_data = remove_symbols_from_string(user_fetch)
-        cursor.execute("SELECT pin FROM card WHERE number == ? ", (user_number,))
+        cursor.execute(GET_PIN_NUMBER_ofACCOUNT, (user_number,))
         pin_fetch = cursor.fetchall()
         pin_data = remove_symbols_from_string(pin_fetch)
         card_number = user
@@ -140,22 +151,20 @@ while choice != 0:
                     if menu == "1":
                         # Print balance
                         acc = (user_number,)
-                        cursor.execute("SELECT balance FROM card WHERE number == ? ", acc)
+                        cursor.execute(GET_BALANCE_ofACCOUNT, acc)
                         fetch = cursor.fetchall()
                         balance = remove_symbols_from_string(fetch)
                         print("\nBalance: " + balance)  # + " $")
-                        continue
                     elif menu == "2":
                         # Add income
                         income = int(input("Enter income:\n"))
                         data = (income, user_number)
-                        cursor.execute("UPDATE card SET balance=(balance + ?) WHERE number == ? ", data)
+                        cursor.execute(UPDATE_BALANCE_ofAccount, data)
                         conn.commit()
                         print("\nIncome was added!")
-                        continue
                     elif menu == "3":
                         # Transfer money to another card.
-                        cursor.execute("SELECT balance FROM card WHERE number == ?", (user_number,))
+                        cursor.execute(GET_BALANCE_ofACCOUNT, (user_number,))
                         fetch = cursor.fetchall()
                         current_balance = int(remove_symbols_from_string(fetch))
                         print("\nTransfer")
@@ -163,9 +172,10 @@ while choice != 0:
                         if card_num_to_transfer[6:] == user_number:
                             print("\nYou can't transfer money to the same account!\n")
                             break
-                        if card_num_to_transfer[-1] == gen_check_digit(card_num_to_transfer[:5], card_num_to_transfer[6:]):
+                        if card_num_to_transfer[-1] == gen_check_digit(card_num_to_transfer[:5],
+                                                                       card_num_to_transfer[6:]):
                             # Means it pass Luhn's algorithm.
-                            cursor.execute("SELECT number FROM card WHERE number == ?", (card_num_to_transfer[6:],))
+                            cursor.execute(GET_CARD_NUMBER_ofACCOUNT, (card_num_to_transfer[6:],))
                             nums = cursor.fetchall()
                             if (card_num_to_transfer[6:],) in nums:
                                 amount = int(input("Enter how much money you want to transfer:\n"))
@@ -173,22 +183,20 @@ while choice != 0:
                                     # do transfer and print success.
                                     sender = (amount, user_number)
                                     receiver = (amount, card_num_to_transfer[6:])
-                                    cursor.execute("UPDATE card SET balance=(balance - ?) WHERE number == ? ", sender)
-                                    cursor.execute("UPDATE card SET balance=(balance + ?) WHERE number == ? ", receiver)
+                                    cursor.execute(UPDATE_BALANCE_ofAccount, sender)
+                                    cursor.execute(UPDATE_BALANCE_ofAccount, receiver)
                                     conn.commit()
                                     print("Success!")
                                 else:
                                     print("Not enough money!")
-                                    continue
                             else:
                                 print("Such a card does not exist.")
-                                continue
                         else:
                             print("\nProbably you made mistake in the card number. Please try again!\n")
                             break
                     elif menu == "4":
                         # Close account
-                        cursor.execute("DELETE FROM card WHERE number == ?", (user_number,))
+                        cursor.execute(DELETE_CARD, (user_number,))
                         conn.commit()
                         print("\nThe account has been closed!\n")
                         break
@@ -202,16 +210,13 @@ while choice != 0:
                         exit()
                     else:
                         print("Incorrect parameter.")
-                        continue
             else:
                 print("\nWrong card number or PIN!\n")
-                continue
         else:
             print("\nWrong card number or PIN!\n")
-            continue
     elif choice == "3":
         # View all accounts
-        cursor.execute("SELECT * FROM card")
+        cursor.execute(GET_ALL_CARDS)
         data = cursor.fetchall()
         for i in data:
             print(i)
@@ -223,4 +228,3 @@ while choice != 0:
         exit()
     else:
         print("Incorrect parameter.")
-        continue
